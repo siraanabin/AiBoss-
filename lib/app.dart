@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import 'models/chat_message.dart';
@@ -209,7 +210,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: selectedProvider,
+                      initialValue: selectedProvider,
                       decoration: const InputDecoration(labelText: 'Provider'),
                       items: const [
                         DropdownMenuItem(
