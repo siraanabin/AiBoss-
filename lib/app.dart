@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 
+import 'models/ai_provider_config.dart';
 import 'models/chat_message.dart';
 import 'services/ai_service.dart';
 import 'services/plugin_registry.dart';
@@ -59,10 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   late final PluginRegistry _plugins;
   List<ChatMessage> _messages = [];
-  String _providerType = 'gemini';
-  String _model = 'gemini-2.5-flash';
-  String _endpoint = 'https://api.openai.com/v1/chat/completions';
-  String _apiKey = '';
+  List<AiProviderConfig> _providers = [];
   bool _busy = false;
   bool _loading = true;
 
@@ -79,10 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     setState(() {
       _messages = storage.loadMessages();
-      _providerType = storage.loadProviderType();
-      _model = storage.loadModel();
-      _endpoint = storage.loadEndpoint();
-      _apiKey = key;
+      _providers = await storage.loadProviderConfigs();
       _loading = false;
     });
   }
@@ -147,12 +142,9 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    if (_apiKey.trim().isEmpty) {
-      await _addMessage(
-        'assistant',
-        'Connect an AI provider first: open Settings and add your API key. '
-            'Your key is stored on this device.',
-      );
+    if (!_providers.any((p) => p.enabled && p.apiKey.trim().isNotEmpty)) {
+      await _addMessage('assistant',
+          'Connect at least one AI provider in Settings. API keys stay on this device.');
       return;
     }
 
@@ -161,11 +153,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final contextMessages = _messages.length > 24
           ? _messages.sublist(_messages.length - 24)
           : List<ChatMessage>.from(_messages);
-      final answer = await _ai.reply(
-        providerType: _providerType,
-        apiKey: _apiKey,
-        model: _model,
-        endpoint: _endpoint,
+      final answer = await _ai.replyWithFallback(
+        providers: _providers,
         memory: await _makeMemory(),
         history: contextMessages,
       );
@@ -181,133 +170,106 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openSettings() async {
-    final providerController = TextEditingController(text: _providerType);
-    final modelController = TextEditingController(text: _model);
-    final endpointController = TextEditingController(text: _endpoint);
-    final keyController = TextEditingController(text: _apiKey);
-    var selectedProvider = _providerType;
+    final configs = _providers.isEmpty
+        ? AiProviderConfig.defaults()
+        : _providers;
+    final modelControllers = <String, TextEditingController>{
+      for (final p in configs) p.id: TextEditingController(text: p.model),
+    };
+    final keyControllers = <String, TextEditingController>{
+      for (final p in configs) p.id: TextEditingController(text: p.apiKey),
+    };
+    final enabled = <String, bool>{for (final p in configs) p.id: p.enabled};
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, refresh) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                8,
-                20,
-                MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('AI Provider Settings',
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedProvider,
-                      decoration: const InputDecoration(labelText: 'Provider'),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'gemini',
-                          child: Text('Google Gemini'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'openai_compatible',
-                          child: Text('OpenAI-compatible API'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        refresh(() {
-                          selectedProvider = value;
-                          providerController.text = value;
-                          if (value == 'gemini' &&
-                              modelController.text == 'gpt-4o-mini') {
-                            modelController.text = 'gemini-2.5-flash';
-                          } else if (value == 'openai_compatible' &&
-                              modelController.text == 'gemini-2.5-flash') {
-                            modelController.text = 'gpt-4o-mini';
-                          }
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: modelController,
-                      decoration: const InputDecoration(
-                        labelText: 'Model ID',
-                        hintText: 'gemini-2.5-flash',
-                      ),
-                    ),
-                    if (selectedProvider == 'openai_compatible') ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: endpointController,
-                        keyboardType: TextInputType.url,
-                        decoration: const InputDecoration(
-                          labelText: 'Chat Completions URL',
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: keyController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'API Key',
-                        helperText: 'Stored securely on this device.',
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: () async {
-                          await widget.storage.saveProviderSettings(
-                            type: selectedProvider,
-                            model: modelController.text.trim(),
-                            endpoint: endpointController.text.trim(),
-                            apiKey: keyController.text,
-                          );
-                          if (!mounted) return;
-                          setState(() {
-                            _providerType = selectedProvider;
-                            _model = modelController.text.trim();
-                            _endpoint = endpointController.text.trim();
-                            _apiKey = keyController.text.trim();
-                          });
-                          if (sheetContext.mounted) {
-                            Navigator.pop(sheetContext);
-                          }
-                        },
-                        child: const Text('Save Settings'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Free usage depends on the provider and its current API limits. '
-                      'Never share your API key.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, refresh) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            18, 8, 18, MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.78,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Multi-AI & Automatic Fallback',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 6),
+                const Text(
+                  'Enable providers in the order shown. If one fails or is rate-limited, AiBoss tries the next enabled provider.',
+                  style: TextStyle(color: Colors.white60, fontSize: 12),
                 ),
-              ),
-            );
-          },
-        );
-      },
+                const SizedBox(height: 10),
+                Expanded(
+                  child: ListView(
+                    children: [
+                      for (final p in configs) ...[
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(p.name),
+                          subtitle: Text(p.endpoint.isEmpty
+                              ? 'Google Gemini API'
+                              : p.endpoint),
+                          value: enabled[p.id] ?? false,
+                          onChanged: (v) => refresh(() => enabled[p.id] = v),
+                        ),
+                        TextField(
+                          controller: modelControllers[p.id],
+                          decoration: InputDecoration(
+                            labelText: '${p.name} model ID',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: keyControllers[p.id],
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: '${p.name} API key',
+                            helperText: 'Leave blank if you do not use this provider.',
+                          ),
+                        ),
+                        const Divider(height: 24),
+                      ],
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () async {
+                      final updated = configs.map((p) => p.copyWith(
+                        model: modelControllers[p.id]!.text.trim(),
+                        apiKey: keyControllers[p.id]!.text.trim(),
+                        enabled: enabled[p.id] ?? false,
+                      )).toList();
+                      await widget.storage.saveProviderConfigs(updated);
+                      if (!mounted) return;
+                      setState(() => _providers = updated);
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    },
+                    child: const Text('Save All AI Settings'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Provider limits and token quotas are separate. Fallback uses your own configured accounts and does not create unlimited free usage. Never share API keys.',
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
-
-    providerController.dispose();
-    modelController.dispose();
-    endpointController.dispose();
-    keyController.dispose();
+    for (final controller in modelControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in keyControllers.values) {
+      controller.dispose();
+    }
   }
 
   Future<void> _openPlugins() async {
