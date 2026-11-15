@@ -51,7 +51,7 @@ class AiService {
       }
     }
     throw Exception(
-      'All configured AI providers failed. ' + failures.join(' | '),
+      'All configured AI providers failed: ${failures.join(' | ')}',
     );
   }
 
