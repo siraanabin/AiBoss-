@@ -73,11 +73,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _load() async {
     final storage = widget.storage;
-    final key = await storage.loadApiKey();
+    final providers = await storage.loadProviderConfigs();
     if (!mounted) return;
     setState(() {
       _messages = storage.loadMessages();
-      _providers = await storage.loadProviderConfigs();
+      _providers = providers;
       _loading = false;
     });
   }
