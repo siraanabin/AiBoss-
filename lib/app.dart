@@ -134,22 +134,24 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || _busy || _loading) return;
     _controller.clear();
-    await _addMessage('user', text);
-
-    final pluginResponse = await _plugins.handleCommand(text);
-    if (pluginResponse != null) {
-      await _addMessage('assistant', pluginResponse);
-      return;
-    }
-
-    if (!_providers.any((p) => p.enabled && p.apiKey.trim().isNotEmpty)) {
-      await _addMessage('assistant',
-          'Connect at least one AI provider in Settings. API keys stay on this device.');
-      return;
-    }
-
     setState(() => _busy = true);
     try {
+      await _addMessage('user', text);
+
+      final pluginResponse = await _plugins.handleCommand(text);
+      if (pluginResponse != null) {
+        await _addMessage('assistant', pluginResponse);
+        return;
+      }
+
+      if (!_providers.any((p) => p.enabled && p.apiKey.trim().isNotEmpty)) {
+        await _addMessage(
+          'assistant',
+          'Connect at least one AI provider in Settings. API keys stay on this device.',
+        );
+        return;
+      }
+
       final contextMessages = _messages.length > 24
           ? _messages.sublist(_messages.length - 24)
           : List<ChatMessage>.from(_messages);
