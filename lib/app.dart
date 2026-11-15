@@ -121,7 +121,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  String _makeMemory() {
+  Future<String> _makeMemory() async {
     if (_messages.length <= 24) return widget.storage.loadMemory();
     final older = _messages.sublist(0, _messages.length - 24);
     final useful = older.where((m) => m.role == 'user').toList();
@@ -130,7 +130,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return text.length > 180 ? '${text.substring(0, 180)}…' : text;
     }).toList();
     final summary = recentFacts.join('\n');
-    widget.storage.saveMemory(summary);
+    await widget.storage.saveMemory(summary);
     return summary;
   }
 
@@ -165,7 +165,7 @@ class _ChatScreenState extends State<ChatScreen> {
         apiKey: _apiKey,
         model: _model,
         endpoint: _endpoint,
-        memory: _makeMemory(),
+        memory: await _makeMemory(),
         history: contextMessages,
       );
       await _addMessage('assistant', answer);
