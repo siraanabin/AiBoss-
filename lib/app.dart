@@ -1,4 +1,4 @@
-// ignore: deprecated_member_use
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 
 import 'models/chat_message.dart';
